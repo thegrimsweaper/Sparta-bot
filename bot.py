@@ -1,3 +1,9 @@
+import os
+import logging
+from datetime import datetime
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
+
 # ========== CONFIGURATION ==========
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = os.environ.get('ADMIN_ID')
@@ -5,36 +11,124 @@ ADMIN_ID = os.environ.get('ADMIN_ID')
 # Validate
 if not BOT_TOKEN:
     print("❌ ERROR: BOT_TOKEN not set in environment variables")
-    print("Add in Render → Environment: BOT_TOKEN=your_token")
+    print("Please set BOT_TOKEN in Render → Environment tab")
     exit(1)
 
-if not ADMIN_ID:
+if ADMIN_ID:
+    ADMIN_ID = int(ADMIN_ID)
+else:
     print("⚠️ WARNING: ADMIN_ID not set. Admin features disabled.")
     ADMIN_ID = None
-else:
-    ADMIN_ID = int(ADMIN_ID)
-# ===================================        "To verify your purchase, I'll need:\n"
-        "1. 📱 Your phone number\n"
-        "2. 📄 Purchase receipt photo\n"
-        "3. 🆔 ID photo\n"
-        "4. 📦 Product photo\n\n"
-        "Send /verify to begin!"
-    )
+# ===================================
 
-async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start the verification process."""
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+PHONE, RECEIPT, ID_PHOTO, PRODUCT_PHOTO = range(4)
+users_db = {}
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot works! Use /verify")
+
+async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
-        "📱 **Step 1/4: Phone Verification**\n\n"
-        "Please share your phone number:",
+        "📱 Step 1: Share phone",
         reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Share Phone Number", request_contact=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
+            [[KeyboardButton("📱 Share Phone", request_contact=True)]],
+            resize_keyboard=True
         )
     )
     return PHONE
 
-async def phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    phone = update.message.contact.phone_number
+    user_id = update.effective_user.id
+    
+    users_db[user_id] = {
+        'phone': phone,
+        'name': update.effective_user.full_name
+    }
+    
+    await update.message.reply_text(f"✅ Phone: {phone}\n📸 Now send receipt photo:")
+    return RECEIPT
+
+async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.photo:
+        user_id = update.effective_user.id
+        users_db[user_id]['receipt'] = update.message.photo[-1].file_id
+        
+        await update.message.reply_text("✅ Receipt! Now send ID photo:")
+        return ID_PHOTO
+    else:
+        await update.message.reply_text("Send photo please")
+        return RECEIPT
+
+async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.photo:
+        user_id = update.effective_user.id
+        users_db[user_id]['id_photo'] = update.message.photo[-1].file_id
+        
+        await update.message.reply_text("✅ ID! Now send product photo:")
+        return PRODUCT_PHOTO
+    else:
+        await update.message.reply_text("Send photo please")
+        return ID_PHOTO
+
+async def get_product(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.photo:
+        user_id = update.effective_user.id
+        users_db[user_id]['product_photo'] = update.message.photo[-1].file_id
+        
+        # Notify admin
+        if ADMIN_ID:
+            try:
+                await context.bot.send_message(
+                    ADMIN_ID,
+                    f"🆕 New submission from {users_db[user_id]['name']}"
+                )
+                await context.bot.send_photo(ADMIN_ID, users_db[user_id]['receipt'], "Receipt")
+                await context.bot.send_photo(ADMIN_ID, users_db[user_id]['id_photo'], "ID")
+                await context.bot.send_photo(ADMIN_ID, users_db[user_id]['product_photo'], "Product")
+            except Exception as e:
+                logger.error(f"Admin notify error: {e}")
+        
+        await update.message.reply_text("🎉 All submitted! Admin will review.")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("Send photo please")
+        return PRODUCT_PHOTO
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Help: /verify to start")
+
+def main():
+    print("🚀 Starting bot...")
+    
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    conv = ConversationHandler(
+        entry_points=[CommandHandler('verify', verify)],
+        states={
+            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
+            RECEIPT: [MessageHandler(filters.PHOTO, get_receipt)],
+            ID_PHOTO: [MessageHandler(filters.PHOTO, get_id)],
+            PRODUCT_PHOTO: [MessageHandler(filters.PHOTO, get_product)],
+        },
+        fallbacks=[]
+    )
+    
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('help', help_cmd))
+    app.add_handler(conv)
+    
+    print("✅ Bot running!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()async def phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle phone number submission."""
     contact = update.message.contact
     user_id = update.effective_user.id
