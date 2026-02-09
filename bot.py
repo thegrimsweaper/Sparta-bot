@@ -1,40 +1,32 @@
-import os
-import logging
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ========== CONFIGURATION ==========
-# Get credentials from environment variables
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_ID = os.environ.get('ADMIN_ID')
+TOKEN = "8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ"
 
-# Validate bot token
-if not BOT_TOKEN:
-    print("=" * 60)
-    print("❌ ERROR: BOT_TOKEN environment variable is not set!")
-    print("=" * 60)
-    print("To fix this:")
-    print("1. Go to Render dashboard → Sparta-bot")
-    print("2. Click 'Environment' tab")
-    print("3. Add: BOT_TOKEN=8542276438:AAR4o-QIUsZCubaeT6dyNun9T6BV1P0qeQ")
-    print("4. Add: ADMIN_ID=1117780787")
-    print("5. Save and redeploy")
-    print("=" * 60)
-    exit(1)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[KeyboardButton("Share phone", request_contact=True)]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Hi! Verify first.\nShare your phone 👇", reply_markup=reply_markup)
 
-# Convert ADMIN_ID to integer if set
-if ADMIN_ID:
-    ADMIN_ID = int(ADMIN_ID)
-else:
-    ADMIN_ID = None
-    print("⚠️ WARNING: ADMIN_ID not set. Admin features disabled.")
+async def got_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = update.message.contact.phone_number
+    await update.message.reply_text(f"Phone: {phone}\n\nNow send ID photo.")
 
-print("=" * 60)
-print("🚀 PRODUCT VERIFICATION BOT STARTING")
-print(f"✅ Bot Token: {'Set' if BOT_TOKEN else 'Missing'}")
-print(f"✅ Admin ID: {ADMIN_ID if ADMIN_ID else 'Not set'}")
-print("=" * 60)
-# ===================================
+async def got_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Photo received.\nNow send product photo.")
+
+def main():
+    app = Application.builder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.CONTACT, got_contact))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, got_photo))
+    
+    print("Bot starting...")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()# ===================================
 
 # Setup logging
 logging.basicConfig(
