@@ -14,7 +14,7 @@ from telegram.ext import (
 # Get from Render Environment Variables (Recommended)
 # OR hardcode here (for testing):
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ)
-ADMIN_ID = os.environ.get('ADMIN_ID', '8542276438)
+ADMIN_ID = os.environ.get('ADMIN_ID', '1117780787)
 # ===================================
 
 # Setup logging
