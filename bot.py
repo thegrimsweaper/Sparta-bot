@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Bot token (get from @BotFather)
 BOT_TOKEN = "8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ"  # Replace with your token
-ADMIN_ID = spartallcbot  # Replace with your chat ID
+ADMIN_ID = 8542276438  # Replace with your chat ID
 
 # Simple user storage
 users_db = {}
