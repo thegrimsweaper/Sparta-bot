@@ -194,4 +194,65 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
+    main()    cmd = update.message.text
+    if cmd.startswith('/approve_'):
+        try:
+            user_id = int(cmd.split('_')[1])
+            if user_id in users_db:
+                await context.bot.send_message(user_id, "✅ Approved!")
+                await update.message.reply_text(f"Approved {user_id}")
+        except:
+            pass
+
+async def admin_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if ADMIN_ID and update.effective_user.id != ADMIN_ID:
+        return
+    
+    cmd = update.message.text
+    if cmd.startswith('/reject_'):
+        try:
+            user_id = int(cmd.split('_')[1])
+            if user_id in users_db:
+                await context.bot.send_message(user_id, "❌ Rejected")
+                await update.message.reply_text(f"Rejected {user_id}")
+        except:
+            pass
+
+def main():
+    print("🚀 Starting bot...")
+    
+    # Create Application
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Conversation handler
+    conv = ConversationHandler(
+        entry_points=[CommandHandler('verify', verify)],
+        states={
+            PHONE: [MessageHandler(filters.CONTACT, phone)],
+            RECEIPT: [MessageHandler(filters.PHOTO, receipt)],
+            ID_PHOTO: [MessageHandler(filters.PHOTO, id_photo)],
+            PRODUCT_PHOTO: [MessageHandler(filters.PHOTO, product_photo)],
+        },
+        fallbacks=[]
+    )
+    
+    # Add handlers
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('help', help_cmd))
+    app.add_handler(conv)
+    
+    # Admin handlers
+    app.add_handler(MessageHandler(
+        filters.Regex(r'^/approve_\d+$'),
+        admin_approve
+    ))
+    app.add_handler(MessageHandler(
+        filters.Regex(r'^/reject_\d+$'),
+        admin_reject
+    ))
+    
+    print("✅ Bot running!")
+    app.run_polling()
+
+if __name__ == '__main__':
     main()
