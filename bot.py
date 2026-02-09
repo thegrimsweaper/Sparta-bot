@@ -1,40 +1,243 @@
 import os
 import logging
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    filters,
+    ContextTypes
+)
 
-# Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# ========== CONFIGURATION ==========
+# Get from Render Environment Variables (Recommended)
+# OR hardcode here (for testing):
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ)
+ADMIN_ID = os.environ.get('ADMIN_ID', '8542276438)
+# ===================================
+
+# Setup logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# Bot token (get from @BotFather)
-BOT_TOKEN = "8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ"  # Replace with your token
-ADMIN_ID = 8542276438  # Replace with your chat ID
+# Conversation states
+PHONE, RECEIPT, ID_PHOTO, PRODUCT_PHOTO = range(4)
 
-# Simple user storage
-users_db = {}
+# Simple storage (in production, use database)
+user_data = {}
 
-async def start(update: Update, context):
-    user = update.effective_user
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command."""
     await update.message.reply_text(
-        f"Welcome {user.first_name}!\n\n"
-        "To verify your purchase, we need:\n"
-        "1. Your phone number\n"
-        "2. Purchase receipt photo\n"
-        "3. ID photo\n"
-        "4. Product photo\n\n"
-        "Start by sharing your phone:",
+        "👋 Welcome to Product Verification Bot!\n\n"
+        "To verify your purchase, I'll need:\n"
+        "1. 📱 Your phone number\n"
+        "2. 📄 Purchase receipt photo\n"
+        "3. 🆔 ID photo\n"
+        "4. 📦 Product photo\n\n"
+        "Send /verify to begin!"
+    )
+
+async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the verification process."""
+    await update.message.reply_text(
+        "📱 **Step 1/4: Phone Verification**\n\n"
+        "Please share your phone number:",
         reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Share Phone", request_contact=True)]],
-            resize_keyboard=True
+            [[KeyboardButton("📱 Share Phone Number", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
         )
     )
-    return "PHONE"
+    return PHONE
 
-async def phone_handler(update: Update, context):
+async def phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle phone number submission."""
     contact = update.message.contact
     user_id = update.effective_user.id
     
+    # Store user data
+    user_data[user_id] = {
+        'phone': contact.phone_number,
+        'name': update.effective_user.full_name,
+        'username': update.effective_user.username,
+        'user_id': user_id
+    }
+    
+    await update.message.reply_text(
+        f"✅ Phone verified: {contact.phone_number}\n\n"
+        "📄 **Step 2/4: Purchase Receipt**\n"
+        "Please send a photo of your purchase receipt or invoice:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return RECEIPT
+
+async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle receipt photo."""
+    if not update.message.photo:
+        await update.message.reply_text("Please send a photo of your receipt.")
+        return RECEIPT
+    
+    user_id = update.effective_user.id
+    user_data[user_id]['receipt_photo'] = update.message.photo[-1].file_id
+    
+    await update.message.reply_text(
+        "✅ Receipt received!\n\n"
+        "🆔 **Step 3/4: ID Verification**\n"
+        "Please send a photo of your ID (Passport/Driver's License/National ID):"
+    )
+    return ID_PHOTO
+
+async def id_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle ID photo."""
+    if not update.message.photo:
+        await update.message.reply_text("Please send a photo of your ID.")
+        return ID_PHOTO
+    
+    user_id = update.effective_user.id
+    user_data[user_id]['id_photo'] = update.message.photo[-1].file_id
+    
+    await update.message.reply_text(
+        "✅ ID photo received!\n\n"
+        "📦 **Step 4/4: Product Photo**\n"
+        "Please send a photo of your actual product:"
+    )
+    return PRODUCT_PHOTO
+
+async def product_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle product photo and complete verification."""
+    if not update.message.photo:
+        await update.message.reply_text("Please send a photo of your product.")
+        return PRODUCT_PHOTO
+    
+    user_id = update.effective_user.id
+    user_data[user_id]['product_photo'] = update.message.photo[-1].file_id
+    user_data[user_id]['status'] = 'pending'
+    
+    # Send confirmation to user
+    await update.message.reply_text(
+        "🎉 **Verification Complete!**\n\n"
+        "Your submission has been received.\n"
+        "We'll review and notify you within 24 hours.\n\n"
+        "Thank you for your purchase!"
+    )
+    
+    # Send to admin (you)
+    await send_to_admin(context, user_id)
+    
+    return ConversationHandler.END
+
+async def send_to_admin(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Send verification request to admin."""
+    user = user_data[user_id]
+    
+    try:
+        # Send user info
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"🆕 **NEW VERIFICATION REQUEST**\n\n"
+                 f"👤 Customer: {user['name']}\n"
+                 f"📱 Phone: {user['phone']}\n"
+                 f"👤 Username: @{user['username']}\n"
+                 f"🆔 User ID: `{user_id}`\n"
+                 f"📅 Submitted: Just now"
+        )
+        
+        # Send photos
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=user['receipt_photo'],
+            caption="📄 Purchase Receipt"
+        )
+        
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=user['id_photo'],
+            caption="🆔 ID Photo"
+        )
+        
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=user['product_photo'],
+            caption="📦 Product Photo"
+        )
+        
+        # Send admin commands
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"**Admin Actions:**\n"
+                 f"Approve: `/approve_{user_id}`\n"
+                 f"Reject: `/reject_{user_id}`"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error sending to admin: {e}")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command."""
+    await update.message.reply_text(
+        "📋 **Help - Product Verification Bot**\n\n"
+        "**Commands:**\n"
+        "/start - Welcome message\n"
+        "/verify - Start verification process\n"
+        "/help - Show this message\n\n"
+        "**Process:**\n"
+        "1. Share phone number\n"
+        "2. Send purchase receipt photo\n"
+        "3. Send ID photo\n"
+        "4. Send product photo\n\n"
+        "Your data is secure and used only for verification."
+    )
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the conversation."""
+    await update.message.reply_text(
+        "Verification cancelled. Use /verify to start again.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+def main():
+    """Start the bot."""
+    # Check if token is set
+    if BOT_TOKEN == '8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ':
+        print("❌ ERROR: Please set BOT_TOKEN")
+        print("1. Add in Render → Environment tab")
+        print("2. Or update in bot.py file")
+        return
+    
+    print("🚀 Starting Product Verification Bot...")
+    
+    # Create the Application
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Setup conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('verify', verify_command)],
+        states={
+            PHONE: [MessageHandler(filters.CONTACT, phone_handler)],
+            RECEIPT: [MessageHandler(filters.PHOTO, receipt_handler)],
+            ID_PHOTO: [MessageHandler(filters.PHOTO, id_photo_handler)],
+            PRODUCT_PHOTO: [MessageHandler(filters.PHOTO, product_photo_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_command)]
+    )
+    
+    # Add all handlers
+    application.add_handler(CommandHandler('start', start_command))
+    application.add_handler(CommandHandler('help', help_command))
+    application.add_handler(conv_handler)
+    
+    # Start the bot
+    print("🤖 Bot is running and ready!")
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()    
     # Store user data
     users_db[user_id] = {
         'phone': contact.phone_number,
