@@ -470,9 +470,11 @@ def main():
 if __name__ == '__main__':
     main()
 # =================================        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Share Phone", request_contact=True)]],
-            resize_keyboard=True
-        )
+            # This is likely what you need around line 473:
+keyboard = [
+    [KeyboardButton("Share Phone", request_contact=True)],  # Line 473
+]
+reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
     return PHONE
 
