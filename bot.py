@@ -1,40 +1,19 @@
-import os
-import logging
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ConversationHandler,
-    filters,
-    ContextTypes
-)
-
 # ========== CONFIGURATION ==========
-# Get from Render Environment Variables (Recommended)
-# OR hardcode here (for testing):
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '8542276438:AAER4o-QIUsZCubaeT6dyNun9T6BVlPOqeQ)
-ADMIN_ID = os.environ.get('ADMIN_ID', '1117780787)
-# ===================================
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+ADMIN_ID = os.environ.get('ADMIN_ID')
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Validate
+if not BOT_TOKEN:
+    print("❌ ERROR: BOT_TOKEN not set in environment variables")
+    print("Add in Render → Environment: BOT_TOKEN=your_token")
+    exit(1)
 
-# Conversation states
-PHONE, RECEIPT, ID_PHOTO, PRODUCT_PHOTO = range(4)
-
-# Simple storage (in production, use database)
-user_data = {}
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command."""
-    await update.message.reply_text(
-        "👋 Welcome to Product Verification Bot!\n\n"
-        "To verify your purchase, I'll need:\n"
+if not ADMIN_ID:
+    print("⚠️ WARNING: ADMIN_ID not set. Admin features disabled.")
+    ADMIN_ID = None
+else:
+    ADMIN_ID = int(ADMIN_ID)
+# ===================================        "To verify your purchase, I'll need:\n"
         "1. 📱 Your phone number\n"
         "2. 📄 Purchase receipt photo\n"
         "3. 🆔 ID photo\n"
